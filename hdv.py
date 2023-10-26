@@ -5,7 +5,8 @@ DATAS = 'data'
 OBSERVERS = 'observers'
 TYPES = 'types'
 
-#обязательно добавить считывание количества строк и столбцов при открытии файла
+
+# обязательно добавить считывание количества строк и столбцов при открытии файла
 # в obsevers в строке указаны столбцы, а в столбцах указаны наблюдатели
 class Hdf:
     def __init__(self, filepath):
@@ -18,12 +19,12 @@ class Hdf:
             data = f[DATAS][:]
             return data
 
-    def write_cell(self, row, column, data):
+    def write_cell(self, row, object_column, data):
         with h5py.File(self.filepath, 'w') as f:
             dataset = f[DATAS]
-            dataset[row, column] = data
-            self.notifyAll(column)
-            # нужно еще оповестить всех наблюдателей, что мы обновились
+            dataset[row, object_column] = data
+            # оповещаем всех наблюдателей, что столбец изменился
+            self.notify_all(object_column)
 
     def update_observer(self, column_object, column_observer):
         with h5py.File(self.filepath, 'r+') as f:
@@ -74,15 +75,18 @@ class Hdf:
             for column in objects:
                 for row in range(self.rows):
                     arr[row] += data[row, column]
-            for row in range(self.rows):
-                data[row, observer_column] = arr[row]
-        self.notifyAll(observer_column)
+            # запишем эти данные в колонку
+            data[row, observer_column] = arr[row]
+            for row in range(1, self.rows):
+                data[row, observer_column] = arr[row] + data[row - 1, observer_column]
+        self.notify_all(observer_column)
 
-
-    def notifyAll(self, object_column):
-
-
-
+    def notify_all(self, object_column):
+        with h5py.File(self.filepath, 'r') as f:
+            observers = f[OBSERVERS][:]
+            for observer_column in range(self.columns):
+                if observers[object_column, observer_column] == 1:
+                    self.update_column(observer_column)
 
     # вспомогательная функция для нахождения цикличности для наблюдателя, если возвращает 1, то цикл найден если None, то нет
     def dfs(self, visited, observers, observer):
@@ -92,3 +96,26 @@ class Hdf:
                 self.dfs(visited, observers, neighbor)
             else:
                 return 1
+
+    def resize_data(self, new_rows=None, new_columns=None):
+        old_columns = self.columns
+        old_rows = self.rows
+        if new_rows is not None:
+            # заполняем новую часть нулями(для DATAS, OBSERVERS, TYPES), при обрезании данных это не понадобится
+            if new_rows > old_rows:
+                arr = np.zeros((new_rows - old_rows, old_columns))
+                with h5py.File(self.filepath, 'w') as f:
+                    dataset = f[DATAS]
+
+        if new_columns is not None:
+            a = 1
+        if (new_rows is not None) and (new_columns is not None):
+            a = 1
+
+        with h5py.File(self.filepath, 'w') as f:
+            dataset = f[DATAS]
+            dataset.resize((self.rows, self.columns))
+            dataset = f[TYPES]
+            dataset.resize(self.columns)
+            dataset = f[OBSERVERS]
+            dataset.resize((self.columns, self.columns))
