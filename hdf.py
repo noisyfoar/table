@@ -51,24 +51,20 @@ class Hdf:
                 # если цикла нет, то происходит возвращение из функции, иначе не добавляем в список наблюдателя
                 if self.dfs(visited, observers, column_observer) is None:
                     return
+            else:
+                observers[column_object, column_observer] = 0
 
-    def update_type(self, column):
-        with h5py.File(self.filepath, 'w') as f:
-            types = f[TYPES]
-            types[column] = int(types[column] == 0)
+        # вспомогательная функция для нахождения цикличности для наблюдателя, если возвращает 1, то цикл найден если None, то нет
 
-    def create_empty_table(self):
-        with h5py.File(self.filepath, 'w') as f:
-            arr = np.zeros(shape=(self.rows, self.columns))
-            data = f.create_dataset(DATAS, data=arr, dtype='i8')
-
-            arr = np.zeros(10)
-            f.create_dataset(TYPES, data=arr, dtype='i8')
-
-            arr = np.zeros(shape=(self.columns, self.columns))
-            f.create_dataset(OBSERVERS, data=arr, dtype='i8')
-            # observers[:] = arr[:] если верхние две строки не заработают
-            return data
+    def dfs(self, visited, observers, observer):
+        visited.add(observer)
+        for neighbor in range(self.columns):
+            if observers[observer, neighbor] == 1:
+                if neighbor not in visited:
+                    if self.dfs(visited, observers, neighbor) is not None:
+                        return -1
+                else:
+                    return -1
 
     def update_column(self, observer_column):
         with h5py.File(self.filepath, 'r+') as f:
@@ -101,17 +97,27 @@ class Hdf:
                 if observers[object_column, observer_column] == 1:
                     self.update_column(observer_column)
 
-    # вспомогательная функция для нахождения цикличности для наблюдателя, если возвращает 1, то цикл найден если None, то нет
-    def dfs(self, visited, observers, observer):
-        visited.add(observer)
-        for neighbor in range(self.columns):
-            if observers[observer, neighbor] == 1:
-                if neighbor not in visited:
-                    if self.dfs(visited, observers, neighbor) is not None:
-                        return -1
-                else:
-                    return -1
+    def update_type(self, column):
+        with h5py.File(self.filepath, 'r+') as f:
+            types = f[TYPES]
+            types[column] = int(not types[column])
 
+    def create_empty_or_load_table(self):
+        with h5py.File(self.filepath, 'r+') as f:
+            if DATAS in f:
+                data = f[DATAS]
+                self.rows, self.columns = data.shape
+            else:
+                arr = np.zeros(shape=(self.columns, self.columns))
+                data = f.create_dataset(DATAS, data=arr, dtype='i8')
+                observers = f.create_dataset(OBSERVERS, data=arr, dtype='i8')
+                arr = np.zeros(10)
+                types = f.create_dataset(TYPES, data=arr, dtype='i8')
+            return data
+
+    # мысль: лучше сделать изменения отдельно и наложить друг на друга,
+    # то есть сначала изменить размер строк потом размер столбцов,
+    # а в ресайзе просто вызвать обе функции
     def resize_data(self, new_rows=None, new_columns=None):
         check_rows = False  # заполнить новые строки, учитывая старые столбцы (для DATAS)
         check_columns = False  # заполнить новые столбцы, учитывая старые строки (для DATAS, OBSERVERS, TYPES)
