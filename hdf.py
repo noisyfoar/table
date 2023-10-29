@@ -42,20 +42,15 @@ class Hdf:
             self.notify_all(object_column)
 
     def update_observer(self, column_object, column_observer):
-        check = False
-        with h5py.File(self.filepath, 'r') as f:
-            observers = f[OBSERVERS][:]
-        if observers[column_object, column_observer] == 0:
-            observers[column_object, column_observer] = 1
-            visited = set()
-            # проверка на цикличность для того, чтобы наблюдатель не следил за своими обновлениями
-            # если цикла нет, то происходит возвращение из функции, иначе не добавляем в список наблюдателя
-            if self.dfs(visited, observers, column_observer) is None:
-                check = True
-
         with h5py.File(self.filepath, 'r+') as f:
             observers = f[OBSERVERS]
-            observers[column_object, column_observer] = int(check)
+            if observers[column_object, column_observer] == 0:
+                observers[column_object, column_observer] = 1
+                visited = set()
+                # проверка на цикличность для того, чтобы наблюдатель не следил за своими обновлениями
+                # если цикла нет, то происходит возвращение из функции, иначе не добавляем в список наблюдателя
+                if self.dfs(visited, observers, column_observer) is None:
+                    return
 
     def update_type(self, column):
         with h5py.File(self.filepath, 'w') as f:
@@ -85,9 +80,9 @@ class Hdf:
                     objects.add(column)
             if len(objects) == 0:
                 return
-            arr = [0]*self.columns
+            arr = [0] * self.columns
             # так как мы собрали список всех наблюдателей, то мы можем уже собрать данные с них
-            data = f[DATAS]
+            data = f[DATAS][:]
             for column in objects:
                 for row in range(self.rows):
                     arr[row] += data[row, column]
