@@ -5,6 +5,12 @@ DATAS = 'data'
 OBSERVERS = 'observers'
 TYPES = 'types'
 TABLE = 'table'
+MAX_COLUMN = 20
+MAX_ROW = 20
+DATA_TYPE = 'i8'
+OBS_TYP_TYPES = 'i1'
+
+MAX_SHAPE = (MAX_ROW, MAX_COLUMN)
 
 
 # обязательно добавить считывание количества строк и столбцов при открытии файла
@@ -13,7 +19,7 @@ TABLE = 'table'
 
 # сделать проверку, если существует, иначе создать новый
 
-class Hdf:
+class Table:
     def __init__(self, filepath):
         self.filepath = filepath
         self.columns = 10
@@ -102,41 +108,28 @@ class Hdf:
             types = f[TYPES]
             types[column] = int(not types[column])
 
-    def create_empty_or_load_table(self):
+    def zeros(self):
+        with h5py.File(self.filepath, 'w') as f:
+            arr = np.zeros(shape=(self.columns, self.columns))
+            data = f.create_dataset(DATAS, data=arr, dtype=DATA_TYPE, maxshape=MAX_SHAPE)
+            f.create_dataset(OBSERVERS, data=arr, dtype=OBS_TYP_TYPES, maxshape=(MAX_COLUMN, MAX_COLUMN))
+            arr = np.zeros(10)
+            f.create_dataset(TYPES, data=arr, dtype=OBS_TYP_TYPES, maxshape=MAX_COLUMN)
+            return data
+
+    def load(self):
         with h5py.File(self.filepath, 'r+') as f:
             if DATAS in f:
                 data = f[DATAS]
                 self.rows, self.columns = data.shape
-            else:
-                arr = np.zeros(shape=(self.columns, self.columns))
-                data = f.create_dataset(DATAS, data=arr, dtype='i8')
-                observers = f.create_dataset(OBSERVERS, data=arr, dtype='i8')
-                arr = np.zeros(10)
-                types = f.create_dataset(TYPES, data=arr, dtype='i8')
-            return data
+                return data
 
     # мысль: лучше сделать изменения отдельно и наложить друг на друга,
     # то есть сначала изменить размер строк потом размер столбцов,
     # а в ресайзе просто вызвать обе функции
-    def resize_data(self, new_rows=None, new_columns=None):
-        check_rows = False  # заполнить новые строки, учитывая старые столбцы (для DATAS)
-        check_columns = False  # заполнить новые столбцы, учитывая старые строки (для DATAS, OBSERVERS, TYPES)
-        check_additional = False  # заполнить оставшуюся часть данных (для DATAS)
-        # сделаем проверки для того, чтобы после изменения размеров данных заполнить новые части нулями(для DATAS, OBSERVERS, TYPES), при обрезании данных это не понадобится
-        if new_rows is not None:
-            check_rows = new_rows > self.rows
-        else:
-            new_rows = self.rows
-        if new_columns is not None:
-            check_columns = new_columns > self.columns
-        else:
-            new_columns = self.columns
-        check_additional = check_columns and check_rows
-
-        with h5py.File(self.filepath, 'w') as f:
-            dataset = f[DATAS]
-            dataset.resize((self.rows, self.columns))
-            dataset = f[TYPES]
-            dataset.resize(self.columns)
-            dataset = f[OBSERVERS]
-            dataset.resize((self.columns, self.columns))
+    def resize(self, size=None):
+        with h5py.File(self.filepath, 'r+') as f:
+            rows, columns = size
+            f[DATAS].resize(size=size)
+            f[OBSERVERS].resize(size=(columns, columns))
+            f[TYPES].resize(size=(columns,))
